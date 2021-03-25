@@ -1,0 +1,16 @@
+[Unit]
+Description=Flatcar Image Updater Service
+
+[Service]
+Environment=ASSETS_PATH=${assets_path}
+Environment=CHANNEL=${channel}
+Environment=CURRENT_VERSION=${current_version}
+Environment=FIXED_VERSIONS=${fixed_versions}
+Environment=LATEST_IMAGES_COUNT=${latest_images_count}
+Environment=SLEEP_DURATION=${sleep_duration}
+ExecStartPre=/usr/bin/mkdir -p ${assets_path}
+ExecStart=/opt/flatcar/flatcar-image-updater
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

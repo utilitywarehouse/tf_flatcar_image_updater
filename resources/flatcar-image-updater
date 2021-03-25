@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o pipefail
+
+# The path under which assets are saved. The structure will be
+# ${ASSETS_PATH}/${CHANNEL}/${VERSION}/<files>
+ASSETS_PATH="${ASSETS_PATH:-"/var/lib/matchbox/assets/flatcar"}"
+# The channel (stable, beta etc)
+CHANNEL="${CHANNEL:-"stable"}"
+# By default the current directory will be a symlink to the latest release. Set
+# this to pin a specific version.
+CURRENT_VERSION="${CURRENT_VERSION}"
+# The number of latest images to keep
+LATEST_IMAGES_COUNT="${LATEST_IMAGES_COUNT:-3}"
+# A comma delimited list of images that will be downloaded and kept regardless
+# of whether they fall within $LATEST_IMAGES_COUNT. Can be used to ensure older
+# releases are kept around.
+FIXED_VERSIONS="${FIXED_VERSIONS}"
+# The amount of time to wait between runs.
+SLEEP_DURATION="${SLEEP_DURATION:-"3600"}"
+
+# Returns 0 if the first argument matches any of the subsequent arguments
+function contains() {
+  val="${1}"
+  shift
+  for i in "$@"; do
+    if [[ "${val}" == "${i}" ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+while true; do
+  # Get the last $LATEST_IMAGES_COUNT releases
+  readarray -t releases < <(curl -s "https://kinvolk.io/flatcar-container-linux/releases-json/releases-${CHANNEL}.json" \
+    | jq -r "to_entries \
+      | sort_by(.value.release_date) \
+      | .[-$((LATEST_IMAGES_COUNT+1)):-1] \
+      | reverse \
+      | .[].key"
+  )
+
+  if [[ "${#releases[@]}" -gt 0 ]]; then
+    # Append requested versions, if they aren't already in the list of releases
+    for v in ${FIXED_VERSIONS//,/ }; do
+      if ! contains "${v}" "${releases[@]}"; then
+        releases+=( "${v}" )
+      fi
+    done
+
+    # Make sure the CURRENT_VERSION is included too
+    if [[ -n "${CURRENT_VERSION}" ]] && ! contains "${CURRENT_VERSION}" "${releases[@]}"; then
+      releases+=( "${CURRENT_VERSION}" )
+    fi
+
+    # Download releases, if they don't already exist
+    for r in "${releases[@]}"; do
+      if [[ -d "${ASSETS_PATH}/${CHANNEL}/${r}" ]]; then
+        continue
+      fi
+
+      echo "INFO - fetching ${r} from upstream"
+
+      KERNEL_FILENAME="flatcar_production_pxe.vmlinuz"
+      INITRD_FILENAME="flatcar_production_pxe_image.cpio.gz"
+      VERSION_FILENAME="version.txt"
+
+      # Download the assets for this release
+      wget -O "/tmp/${KERNEL_FILENAME}" "https://${CHANNEL}.release.flatcar-linux.net/amd64-usr/${r}/${KERNEL_FILENAME}"
+      wget -O "/tmp/${INITRD_FILENAME}" "https://${CHANNEL}.release.flatcar-linux.net/amd64-usr/${r}/${INITRD_FILENAME}"
+      wget -O "/tmp/${VERSION_FILENAME}" "https://${CHANNEL}.release.flatcar-linux.net/amd64-usr/${r}/${VERSION_FILENAME}"
+      # Copy to assets location
+      mkdir -p "${ASSETS_PATH}/${CHANNEL}/${r}"
+      cp "/tmp/${KERNEL_FILENAME}" "${ASSETS_PATH}/${CHANNEL}/${r}/${KERNEL_FILENAME}"
+      cp "/tmp/${INITRD_FILENAME}" "${ASSETS_PATH}/${CHANNEL}/${r}/${INITRD_FILENAME}"
+      cp "/tmp/${VERSION_FILENAME}" "${ASSETS_PATH}/${CHANNEL}/${r}/${VERSION_FILENAME}"
+      # Cleanup
+      rm "/tmp/${KERNEL_FILENAME}"
+      rm "/tmp/${INITRD_FILENAME}"
+      rm "/tmp/${VERSION_FILENAME}"
+
+      echo "INFO - finished downloading ${r}"
+    done
+
+    # Symlink current to the latest release, or CURRENT_VERSION if it's set
+    ln -sfnv "${CURRENT_VERSION:-${releases[0]}}" "${ASSETS_PATH}/${CHANNEL}/current"
+
+    # Remove old releases
+    for d in "${ASSETS_PATH}/${CHANNEL}/"*/; do
+      # Remove trailing slash from name
+      dir=${d%*/}
+
+      # Ignore symlinks
+      if [[ -L "${dir}" ]]; then
+        continue
+      fi
+
+      # Extract the version from the path
+      version=${dir##*/}
+
+      # If the version isn't in the list of releases then remove it
+      if ! contains "${version}" "${releases[@]}"; then
+        echo "INFO - removing ${dir}"
+        rm -rfv "${dir}"
+      fi
+    done
+  else
+    echo "ERROR - couldn't retrieve releases from upstream"
+  fi
+
+  echo "INFO - sleeping for ${SLEEP_DURATION}s"
+  sleep "${SLEEP_DURATION}"
+done
