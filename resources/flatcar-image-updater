@@ -8,6 +8,8 @@ set -o pipefail
 ASSETS_PATH="${ASSETS_PATH:-"/var/lib/matchbox/assets/flatcar"}"
 # The channel (stable, beta etc)
 CHANNEL="${CHANNEL:-"stable"}"
+# URL to flatcar releases json feed
+RELEASES_JSON_FEED="${RELEASES_JSON_FEED:-"https://www.flatcar.org/releases-json/releases"}"
 # By default the current directory will be a symlink to the latest release. Set
 # this to pin a specific version.
 CURRENT_VERSION="${CURRENT_VERSION}"
@@ -35,7 +37,7 @@ function contains() {
 
 while true; do
   # Get the last $LATEST_IMAGES_COUNT releases
-  readarray -t releases < <(curl -s "https://kinvolk.io/flatcar-container-linux/releases-json/releases-${CHANNEL}.json" \
+  readarray -t releases < <(curl -s "${RELEASES_JSON_FEED}-${CHANNEL}.json" \
     | jq -r "to_entries \
       | sort_by(.value.release_date) \
       | .[-$((LATEST_IMAGES_COUNT+1)):-1] \
