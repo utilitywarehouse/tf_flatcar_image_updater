@@ -1,5 +1,4 @@
 data "ignition_file" "flatcar_image_updater" {
-  filesystem = "root"
   path       = "/opt/flatcar/flatcar-image-updater"
   mode       = 493
 
