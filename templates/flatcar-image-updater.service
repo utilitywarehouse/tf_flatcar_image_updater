@@ -10,7 +10,8 @@ Environment=LATEST_IMAGES_COUNT=${latest_images_count}
 Environment=SLEEP_DURATION=${sleep_duration}
 ExecStartPre=/usr/bin/mkdir -p ${assets_path}
 ExecStart=/opt/flatcar/flatcar-image-updater
-Restart=on-failure
+Restart=always
+RestartSec=20
 
 [Install]
 WantedBy=multi-user.target
