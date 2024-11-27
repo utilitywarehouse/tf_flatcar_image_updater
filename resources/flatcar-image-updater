@@ -21,6 +21,8 @@ LATEST_IMAGES_COUNT="${LATEST_IMAGES_COUNT:-3}"
 FIXED_VERSIONS="${FIXED_VERSIONS}"
 # The amount of time to wait between runs.
 SLEEP_DURATION="${SLEEP_DURATION:-"3600"}"
+# The amount time to wait between after a failed attempt before retrying
+FAIL_RETRY_SLEEP_DURATION="${FAIL_RETRY_SLEEP_DURATION:-"60"}"
 
 # Returns 0 if the first argument matches any of the subsequent arguments
 function contains() {
@@ -109,10 +111,12 @@ while true; do
         rm -rfv "${dir}"
       fi
     done
+    echo "INFO - sleeping for ${SLEEP_DURATION}s"
+    sleep "${SLEEP_DURATION}"
+
   else
     echo "ERROR - couldn't retrieve releases from upstream"
+    echo "INFO - sleeping for ${FAIL_RETRY_SLEEP_DURATION}s"
+    sleep "${FAIL_RETRY_SLEEP_DURATION}"
   fi
-
-  echo "INFO - sleeping for ${SLEEP_DURATION}s"
-  sleep "${SLEEP_DURATION}"
 done
